@@ -38,10 +38,9 @@ razorpay_client = razorpay.Client(
 
 # --- API Endpoints ---
 
-# Menu API
 @app.route('/api/menu', methods=['GET'])
 def get_menu():
-    """Returns the entire menu, grouped by category."""
+    """Returns the available menu for customers, grouped by category."""
     menu_items = MenuItem.query.filter_by(is_available=True).all()
     menu_by_category = {}
     for item in menu_items:
@@ -50,16 +49,13 @@ def get_menu():
         menu_by_category[item.category].append(item.to_dict())
     return jsonify(menu_by_category)
 
-# Order Placement API
 @app.route('/api/orders', methods=['POST'])
 def place_order():
     """Places a new order and stores it in the database."""
     data = request.get_json()
-
-    # Basic validation
     if not all(k in data for k in ['customer_name', 'customer_phone', 'items', 'total_price']):
         return jsonify({'error': 'Missing required fields'}), 400
-
+    
     new_order = Order(
         customer_name=data['customer_name'],
         customer_phone=data['customer_phone'],
@@ -67,21 +63,85 @@ def place_order():
         delivery_address=data.get('delivery_address'),
         total_price=data['total_price']
     )
-
     for item_data in data['items']:
         menu_item = MenuItem.query.filter_by(name=item_data['name']).first()
         if menu_item:
-            order_item = OrderItem(
-                menu_item_id=menu_item.id,
-                quantity=item_data['quantity'],
-                price=menu_item.price
-            )
+            order_item = OrderItem(menu_item_id=menu_item.id, quantity=item_data['quantity'], price=menu_item.price)
             new_order.order_items.append(order_item)
-
     db.session.add(new_order)
     db.session.commit()
-
     return jsonify({'message': 'Order placed successfully', 'order_id': new_order.id}), 201
+
+# --- Admin Panel APIs ---
+
+@app.route('/api/admin/menu', methods=['GET'])
+def get_admin_menu():
+    """Returns the entire menu for the admin panel (including unavailable items)."""
+    menu_items = MenuItem.query.all()
+    return jsonify([item.to_dict() for item in menu_items])
+
+@app.route('/api/admin/menu', methods=['POST'])
+def add_menu_item():
+    """Adds a new item to the menu."""
+    data = request.get_json()
+    if not all(k in data for k in ['name', 'price', 'category']):
+        return jsonify({'error': 'Missing required fields: name, price, category'}), 400
+    
+    new_item = MenuItem(
+        name=data['name'],
+        description=data.get('description', ''),
+        price=float(data['price']),
+        image_url=data.get('image_url', ''),
+        category=data['category'],
+        is_veg=data.get('is_veg', True),
+        is_available=data.get('is_available', True)
+    )
+    db.session.add(new_item)
+    db.session.commit()
+    return jsonify(new_item.to_dict()), 201
+
+@app.route('/api/admin/menu/<int:item_id>', methods=['PUT'])
+def update_menu_item(item_id):
+    """Updates an existing menu item."""
+    item = MenuItem.query.get_or_404(item_id)
+    data = request.get_json()
+    
+    item.name = data.get('name', item.name)
+    item.description = data.get('description', item.description)
+    item.price = float(data.get('price', item.price))
+    item.image_url = data.get('image_url', item.image_url)
+    item.category = data.get('category', item.category)
+    item.is_veg = data.get('is_veg', item.is_veg)
+    item.is_available = data.get('is_available', item.is_available)
+    
+    db.session.commit()
+    return jsonify(item.to_dict())
+
+@app.route('/api/admin/menu/<int:item_id>', methods=['DELETE'])
+def delete_menu_item(item_id):
+    """Deletes a menu item."""
+    item = MenuItem.query.get_or_404(item_id)
+    db.session.delete(item)
+    db.session.commit()
+    return jsonify({'message': 'Menu item deleted successfully'}), 200
+
+@app.route('/api/admin/orders', methods=['GET'])
+def get_all_orders():
+    """Returns all orders for the admin panel."""
+    orders = Order.query.order_by(Order.order_date.desc()).all()
+    return jsonify([order.to_dict() for order in orders])
+
+@app.route('/api/admin/orders/<int:order_id>/status', methods=['PUT'])
+def update_order_status(order_id):
+    """Updates the status of an order."""
+    order = Order.query.get_or_404(order_id)
+    data = request.get_json()
+    if 'status' not in data:
+        return jsonify({'error': 'Status is required'}), 400
+    order.status = data['status']
+    db.session.commit()
+    return jsonify({'message': f'Order {order_id} status updated to {data["status"]}'})
+
 
 # Table Booking API
 @app.route('/api/bookings', methods=['POST'])
