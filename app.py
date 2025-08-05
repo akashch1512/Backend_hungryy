@@ -26,6 +26,11 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 db.init_app(app)
 migrate = Migrate(app, db)
 
+with app.app_context():
+        print("Creating DB Tables...")
+        db.create_all()
+        print("Tables should be created now.")
+
 # Initialize Razorpay
 razorpay_client = razorpay.Client(
     auth=(os.getenv('RAZORPAY_KEY_ID'), os.getenv('RAZORPAY_KEY_SECRET'))
@@ -197,9 +202,5 @@ def get_all_bookings():
     return jsonify([booking.to_dict() for booking in bookings])
 
 
-if __name__ == '__main__':
-    with app.app_context():
-        print("Creating DB Tables...")
-        db.create_all()
-        print("Tables should be created now.")
-    app.run(debug=True)
+# if __name__ == '__main__':
+#     app.run(debug=True)
